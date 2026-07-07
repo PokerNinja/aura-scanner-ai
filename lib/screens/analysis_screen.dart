@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../services/face_analyzer_service.dart';
+import 'result_screen.dart';
 
 class AnalysisScreen extends StatefulWidget {
   final String imagePath;
@@ -17,6 +19,9 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   bool _isAdLoaded = false;
   bool _isAnalysisComplete = false;
   FaceAnalysisResult? _analysisResult;
+  
+  bool _hasNavigated = false;
+  Timer? _failsafeTimer;
 
   // TEST AD UNIT ID - Replace with production ID before launch
   final String _adUnitId = 'ca-app-pub-3940256099942544/1033173712';
@@ -24,6 +29,12 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // Absolute Failsafe: 7 seconds maximum waiting time.
+    _failsafeTimer = Timer(const Duration(seconds: 7), () {
+      _forceNavigate();
+    });
+    
     _loadInterstitialAd();
     _runAnalysis();
   }
@@ -40,7 +51,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         },
         onAdFailedToLoad: (error) {
           debugPrint('InterstitialAd failed to load: $error');
-          _isAdLoaded = true; // Proceed anyway if ad fails
+          _isAdLoaded = true; // Proceed anyway without ad
           _checkAndProceed();
         },
       ),
@@ -48,42 +59,82 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   }
 
   Future<void> _runAnalysis() async {
-    // Artificial delay to ensure user sees the "Analyzing" state
+    // Fake processing time for UX
     await Future.delayed(const Duration(seconds: 2));
-
-    _analysisResult = await _faceAnalyzer.analyzeImage(widget.imagePath);
+    
+    FaceAnalysisResult? result = await _faceAnalyzer.analyzeImage(widget.imagePath);
+    
+    // Fallback logic if ML Kit fails to detect a face (prevents infinite loading)
+    if (result == null) {
+      result = FaceAnalysisResult(
+        smilingProbability: 0.5,
+        leftEyeOpenProbability: 1.0,
+        rightEyeOpenProbability: 1.0,
+        headTiltX: 0.0,
+        headTiltY: 0.0,
+        headTiltZ: 0.0,
+        boundingBox: Rect.zero,
+      );
+    }
+    
+    _analysisResult = result;
     _isAnalysisComplete = true;
     _checkAndProceed();
   }
 
   void _checkAndProceed() {
-    if (_isAnalysisComplete && _isAdLoaded) {
+    if (_isAnalysisComplete && _isAdLoaded && !_hasNavigated && mounted) {
       if (_interstitialAd != null) {
+        // Cancel timer when ad is showing to prevent background navigation
+        _failsafeTimer?.cancel();
+        
         _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
           onAdDismissedFullScreenContent: (ad) {
             ad.dispose();
-            _navigateToResult();
+            _forceNavigate();
           },
           onAdFailedToShowFullScreenContent: (ad, error) {
             ad.dispose();
-            _navigateToResult();
+            _forceNavigate();
           },
         );
         _interstitialAd!.show();
       } else {
-        _navigateToResult();
+        _forceNavigate();
       }
     }
   }
 
-  void _navigateToResult() {
-    // ResultScreen will be implemented in Phase 3
-    debugPrint('Navigating to Result. Smile Prob: ${_analysisResult?.smilingProbability}');
-    Navigator.pop(context);
+  void _forceNavigate() {
+    if (_hasNavigated || !mounted) return;
+    _hasNavigated = true;
+    _failsafeTimer?.cancel();
+    
+    // Safety check again for analysis result
+    final finalResult = _analysisResult ?? FaceAnalysisResult(
+      smilingProbability: 0.5,
+      leftEyeOpenProbability: 1.0,
+      rightEyeOpenProbability: 1.0,
+      headTiltX: 0.0,
+      headTiltY: 0.0,
+      headTiltZ: 0.0,
+      boundingBox: Rect.zero,
+    );
+    
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ResultScreen(
+          imagePath: widget.imagePath,
+          faceResult: finalResult,
+        ),
+      ),
+    );
   }
 
   @override
   void dispose() {
+    _failsafeTimer?.cancel();
     _faceAnalyzer.dispose();
     _interstitialAd?.dispose();
     super.dispose();

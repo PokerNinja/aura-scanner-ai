@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'analysis_screen.dart';
+import 'history_screen.dart';
+import '../widgets/bouncing_button.dart';
 
 class CameraScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
@@ -113,7 +115,19 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
       body: Stack(
         fit: StackFit.expand,
         children: [
-          CameraPreview(_controller!),
+          // 1. Camera preview (bottom of stack)
+          SizedBox.expand(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: _controller!.value.previewSize!.height,
+                height: _controller!.value.previewSize!.width,
+                child: CameraPreview(_controller!),
+              ),
+            ),
+          ),
+
+          // 2. Bottom gradient + SCAN AURA button
           Positioned(
             bottom: 0,
             left: 0,
@@ -131,7 +145,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                 ),
               ),
               child: Center(
-                child: GestureDetector(
+                child: BouncingButton(
                   onTap: _captureAndAnalyze,
                   child: Container(
                     height: 85,
@@ -154,6 +168,35 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                       ),
                     ),
                   ),
+                ),
+              ),
+            ),
+          ),
+
+          // 3. Journal button — rendered last so it sits on top of everything
+          Positioned(
+            top: 60,
+            right: 20,
+            child: BouncingButton(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const HistoryScreen()),
+              ),
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black.withValues(alpha: 0.45),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.25),
+                    width: 1,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.auto_stories_rounded,
+                  color: Colors.white,
+                  size: 22,
                 ),
               ),
             ),
